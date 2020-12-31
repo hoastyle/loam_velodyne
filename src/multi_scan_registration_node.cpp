@@ -11,6 +11,7 @@ int main(int argc, char **argv)
 
   loam::MultiScanRegistration multiScan;
 
+  // 如何建立该节点和其他节点的关系
   if (multiScan.setup(node, privateNode)) {
     // initialization successful
     ros::spin();

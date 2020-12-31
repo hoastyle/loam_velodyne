@@ -41,8 +41,7 @@
 
 namespace loam {
 
-
-
+// 默认支持VLP16, 32, 64, 也可通过最大,最小垂直角度和激光线束
 /** \brief Class realizing a linear mapping from vertical point angle to the corresponding scan ring.
  *
  */

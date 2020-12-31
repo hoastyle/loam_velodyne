@@ -25,11 +25,13 @@ RegistrationParams::RegistrationParams(const float& scanPeriod_,
       surfaceCurvatureThreshold(surfaceCurvatureThreshold_)
 {};
 
-void BasicScanRegistration::processScanlines(const Time& scanTime, std::vector<pcl::PointCloud<pcl::PointXYZI>> const& laserCloudScans)
+void BasicScanRegistration::processScanlines(
+    const Time& scanTime, std::vector<pcl::PointCloud<pcl::PointXYZI>> const& laserCloudScans)
 {
   // reset internal buffers and set IMU start state based on current scan time
   reset(scanTime);  
 
+  // 把多个scan的点推进一个连续的vector中
   // construct sorted full resolution cloud
   size_t cloudSize = 0;
   for (int i = 0; i < laserCloudScans.size(); i++) {
@@ -97,7 +99,8 @@ void BasicScanRegistration::updateIMUData(Vector3& acc, IMUState& newState)
   _imuHistory.push(newState);
 }
 
-
+// 如果没有imu, 什么都不做
+// 如果有imu,根据imu的数据，求这段时间的运动，并将运动补偿到点上
 void BasicScanRegistration::projectPointToStartOfSweep(pcl::PointXYZI& point, float relTime)
 {
   // project point to the start of the sweep using corresponding IMU data
@@ -108,7 +111,6 @@ void BasicScanRegistration::projectPointToStartOfSweep(pcl::PointXYZI& point, fl
   }
 }
 
-
 void BasicScanRegistration::setIMUTransformFor(const float& relTime)
 {
   interpolateIMUStateFor(relTime, _imuCur);
@@ -117,11 +119,9 @@ void BasicScanRegistration::setIMUTransformFor(const float& relTime)
   _imuPositionShift = _imuCur.position - _imuStart.position - _imuStart.velocity * relSweepTime;
 }
 
-
-
 void BasicScanRegistration::transformToStartIMU(pcl::PointXYZI& point)
 {
-  // rotate point to global IMU system
+  // rotate point to global IMU system, RPY
   rotateZXY(point, _imuCur.roll, _imuCur.pitch, _imuCur.yaw);
 
   // add global IMU position shift
@@ -129,28 +129,28 @@ void BasicScanRegistration::transformToStartIMU(pcl::PointXYZI& point)
   point.y += _imuPositionShift.y();
   point.z += _imuPositionShift.z();
 
-  // rotate point back to local IMU system relative to the start IMU state
+  // rotate point back to local IMU system relative to the start IMU state, YPR
   rotateYXZ(point, -_imuStart.yaw, -_imuStart.pitch, -_imuStart.roll);
 }
-
-
 
 void BasicScanRegistration::interpolateIMUStateFor(const float &relTime, IMUState &outputState)
 {
   double timeDiff = toSec(_scanTime - _imuHistory[_imuIdx].stamp) + relTime;
+  // 把imu index更新到最新
   while (_imuIdx < _imuHistory.size() - 1 && timeDiff > 0) {
     _imuIdx++;
+    // 如果点比imu新，则为正，继续循环，直到最新的imu数据或者点比imu旧的第一个imu index
     timeDiff = toSec(_scanTime - _imuHistory[_imuIdx].stamp) + relTime;
   }
 
   if (_imuIdx == 0 || timeDiff > 0) {
     outputState = _imuHistory[_imuIdx];
   } else {
+    // 计算点和imu周期的比例关系
     float ratio = -timeDiff / toSec(_imuHistory[_imuIdx].stamp - _imuHistory[_imuIdx - 1].stamp);
     IMUState::interpolate(_imuHistory[_imuIdx], _imuHistory[_imuIdx - 1], ratio, outputState);
   }
 }
-
 
 void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
 {
@@ -161,6 +161,7 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
     size_t scanStartIdx = _scanIndices[i].first;
     size_t scanEndIdx = _scanIndices[i].second;
 
+    // 如果scan比较小，则忽略
     // skip empty scans
     if (scanEndIdx <= scanStartIdx + 2 * _config.curvatureRegion) {
       continue;
@@ -172,7 +173,7 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
       _laserCloud[j].intensity = i + _scanPeriod * (j - scanStartIdx) / scanSize;
     }*/
 
-    // reset scan buffers
+    // reset scan buffers, 标记不适合作为特征点的点
     setScanBuffersFor(scanStartIdx, scanEndIdx);
 
     // extract features from equally sized scan regions
@@ -189,9 +190,8 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
 
       size_t regionSize = ep - sp + 1;
 
-      // reset region buffers
+      // reset region buffers, 计算相邻点的曲率
       setRegionBuffersFor(sp, ep);
-
 
       // extract corner features
       int largestPickedNum = 0;
@@ -317,7 +317,6 @@ void BasicScanRegistration::setRegionBuffersFor(const size_t& startIdx, const si
   }
 }
 
-
 void BasicScanRegistration::setScanBuffersFor(const size_t& startIdx, const size_t& endIdx)
 {
   // resize buffers
@@ -332,10 +331,12 @@ void BasicScanRegistration::setScanBuffersFor(const size_t& startIdx, const size
 
     float diffNext = calcSquaredDiff(nextPoint, point);
 
+    // 如果两个点的间距比较大且束夹角较小，则很大可能是被遮挡的两个边缘点，建起设置为不可用特征点
     if (diffNext > 0.1) {
       float depth1 = calcPointDistance(point);
       float depth2 = calcPointDistance(nextPoint);
 
+      // 点1比点2远
       if (depth1 > depth2) {
         float weighted_distance = std::sqrt(calcSquaredDiff(nextPoint, point, depth2 / depth1)) / depth2;
 
@@ -356,13 +357,12 @@ void BasicScanRegistration::setScanBuffersFor(const size_t& startIdx, const size
     float diffPrevious = calcSquaredDiff(point, previousPoint);
     float dis = calcSquaredPointDistance(point);
 
+    // 如果B点和A C点的距离都比较大（和相邻点距离较大），则有可能是离群点或者是和光束平行点
     if (diffNext > 0.0002 * dis && diffPrevious > 0.0002 * dis) {
       _scanNeighborPicked[i - startIdx] = 1;
     }
   }
 }
-
-
 
 void BasicScanRegistration::markAsPicked(const size_t& cloudIdx, const size_t& scanIdx)
 {

@@ -86,6 +86,7 @@ bool MultiScanRegistration::setup(ros::NodeHandle& node, ros::NodeHandle& privat
   return true;
 }
 
+// 初始化scanMapper并为时间建立联系.
 bool MultiScanRegistration::setupROS(ros::NodeHandle& node, ros::NodeHandle& privateNode, RegistrationParams& config_out)
 {
   if (!ScanRegistration::setupROS(node, privateNode, config_out))
@@ -94,6 +95,7 @@ bool MultiScanRegistration::setupROS(ros::NodeHandle& node, ros::NodeHandle& pri
   // fetch scan mapping params
   std::string lidarName;
 
+  // 获取默认支持的scanMapper或者使用最小角度,最大角度,线数数目初始化scan mapper
   if (privateNode.getParam("lidar", lidarName)) {
     if (lidarName == "VLP-16") {
       _scanMapper = MultiScanMapper::Velodyne_VLP_16();
@@ -138,30 +140,31 @@ bool MultiScanRegistration::setupROS(ros::NodeHandle& node, ros::NodeHandle& pri
   return true;
 }
 
-
-
-void MultiScanRegistration::handleCloudMessage(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
+void MultiScanRegistration::handleCloudMessage(
+    const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg)
 {
   if (_systemDelay > 0) 
   {
-    --_systemDelay;
-    return;
+      --_systemDelay;
+      return;
   }
 
   // fetch new input cloud
   pcl::PointCloud<pcl::PointXYZ> laserCloudIn;
   pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
 
+  // 传输数据和时间点
   process(laserCloudIn, fromROSTime(laserCloudMsg->header.stamp));
 }
 
-
-
+// 传入点云以及点云时间
 void MultiScanRegistration::process(const pcl::PointCloud<pcl::PointXYZ>& laserCloudIn, const Time& scanTime)
 {
   size_t cloudSize = laserCloudIn.size();
 
   // determine scan start and end orientations
+  // tan(theta) = y / x;
+  // 为什么做取反和补2PI的操作
   float startOri = -std::atan2(laserCloudIn[0].y, laserCloudIn[0].x);
   float endOri = -std::atan2(laserCloudIn[cloudSize - 1].y,
                              laserCloudIn[cloudSize - 1].x) + 2 * float(M_PI);
@@ -177,6 +180,7 @@ void MultiScanRegistration::process(const pcl::PointCloud<pcl::PointXYZ>& laserC
   // clear all scanline points
   std::for_each(_laserCloudScans.begin(), _laserCloudScans.end(), [](auto&&v) {v.clear(); }); 
 
+  // 在这里，坐标轴经过了转换，换成了x向左，y向上，z向前的右手坐标系 !!!
   // extract valid points from input cloud
   for (int i = 0; i < cloudSize; i++) {
     point.x = laserCloudIn[i].y;
@@ -224,10 +228,12 @@ void MultiScanRegistration::process(const pcl::PointCloud<pcl::PointXYZ>& laserC
       }
     }
 
+    // 根据点在整个scan中的位置计算时间, 并存储在intensity中
     // calculate relative scan time based on point orientation
     float relTime = config().scanPeriod * (ori - startOri) / (endOri - startOri);
     point.intensity = scanID + relTime;
 
+    // TODO: 利用IMU数据做了什么？如何和其他的node共同工作的？
     projectPointToStartOfSweep(point, relTime);
 
     _laserCloudScans[scanID].push_back(point);
