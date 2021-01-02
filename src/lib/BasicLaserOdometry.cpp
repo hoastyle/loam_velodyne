@@ -217,7 +217,6 @@ void BasicLaserOdometry::process()
    _frameCount++;
    _transform.pos -= _imuVeloFromStart * _scanPeriod;
 
-
    size_t lastCornerCloudSize = _lastCornerCloud->points.size();
    size_t lastSurfaceCloudSize = _lastSurfaceCloud->points.size();
 
@@ -662,9 +661,6 @@ void BasicLaserOdometry::process()
       _lastCornerKDTree.setInputCloud(_lastCornerCloud);
       _lastSurfaceKDTree.setInputCloud(_lastSurfaceCloud);
    }
-
 }
-
-
 
 } // end namespace loam

@@ -183,7 +183,6 @@ void ScanRegistration::handleIMUMessage(const sensor_msgs::Imu::ConstPtr& imuIn)
   updateIMUData(acc, newState);
 }
 
-
 // sweepStart通过processScanLines进行更新, 即点云开始时间
 void ScanRegistration::publishResult()
 {

@@ -38,7 +38,6 @@
 
 namespace loam
 {
-
   using std::sin;
   using std::cos;
   using std::asin;
@@ -46,7 +45,6 @@ namespace loam
   using std::sqrt;
   using std::fabs;
   using std::pow;
-
 
   LaserOdometry::LaserOdometry(float scanPeriod, uint16_t ioRatio, size_t maxIterations):
     BasicLaserOdometry(scanPeriod, maxIterations),
@@ -59,7 +57,6 @@ namespace loam
     _laserOdometryTrans.frame_id_       = "/camera_init";
     _laserOdometryTrans.child_frame_id_ = "/laser_odom";
   }
-
 
   bool LaserOdometry::setup(ros::NodeHandle &node, ros::NodeHandle &privateNode)
   {
@@ -186,8 +183,6 @@ namespace loam
     _newCornerPointsSharp = true;
   }
 
-
-
   void LaserOdometry::laserCloudLessSharpHandler(const sensor_msgs::PointCloud2ConstPtr& cornerPointsLessSharpMsg)
   {
     _timeCornerPointsLessSharp = cornerPointsLessSharpMsg->header.stamp;
@@ -198,8 +193,6 @@ namespace loam
     pcl::removeNaNFromPointCloud(*cornerPointsLessSharp(), *cornerPointsLessSharp(), indices);
     _newCornerPointsLessSharp = true;
   }
-
-
 
   void LaserOdometry::laserCloudFlatHandler(const sensor_msgs::PointCloud2ConstPtr& surfPointsFlatMsg)
   {
@@ -212,8 +205,6 @@ namespace loam
     _newSurfPointsFlat = true;
   }
 
-
-
   void LaserOdometry::laserCloudLessFlatHandler(const sensor_msgs::PointCloud2ConstPtr& surfPointsLessFlatMsg)
   {
     _timeSurfPointsLessFlat = surfPointsLessFlatMsg->header.stamp;
@@ -224,8 +215,6 @@ namespace loam
     pcl::removeNaNFromPointCloud(*surfPointsLessFlat(), *surfPointsLessFlat(), indices);
     _newSurfPointsLessFlat = true;
   }
-
-
 
   void LaserOdometry::laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstPtr& laserCloudFullResMsg)
   {
@@ -238,8 +227,6 @@ namespace loam
     _newLaserCloudFullRes = true;
   }
 
-
-
   void LaserOdometry::imuTransHandler(const sensor_msgs::PointCloud2ConstPtr& imuTransMsg)
   {
     _timeImuTrans = imuTransMsg->header.stamp;
@@ -249,7 +236,6 @@ namespace loam
     updateIMU(imuTrans);
     _newImuTrans = true;
   }
-
 
   void LaserOdometry::spin()
   {
@@ -269,9 +255,9 @@ namespace loam
     }
   }
 
-
   bool LaserOdometry::hasNewData()
   {
+    // 所有的变量都在data callback中被置为true并且每种数据间隔的时间非常小，即表示有新数据
     return _newCornerPointsSharp && _newCornerPointsLessSharp && _newSurfPointsFlat &&
       _newSurfPointsLessFlat && _newLaserCloudFullRes && _newImuTrans &&
       fabs((_timeCornerPointsSharp - _timeSurfPointsLessFlat).toSec()) < 0.005 &&
@@ -280,8 +266,6 @@ namespace loam
       fabs((_timeLaserCloudFullRes - _timeSurfPointsLessFlat).toSec()) < 0.005 &&
       fabs((_timeImuTrans - _timeSurfPointsLessFlat).toSec()) < 0.005;
   }
-
-
 
   void LaserOdometry::process()
   {
@@ -292,7 +276,6 @@ namespace loam
     BasicLaserOdometry::process();
     publishResult();
   }
-
 
   void LaserOdometry::publishResult()
   {
@@ -327,5 +310,4 @@ namespace loam
       publishCloudMsg(_pubLaserCloudFullRes, *laserCloud(), sweepTime, "/camera");
     }
   }
-
 } // end namespace loam

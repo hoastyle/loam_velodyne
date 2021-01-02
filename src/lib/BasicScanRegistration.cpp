@@ -31,7 +31,7 @@ void BasicScanRegistration::processScanlines(
   // reset internal buffers and set IMU start state based on current scan time
   reset(scanTime);  
 
-  // 把多个scan的点推进一个连续的vector中
+  // 把多个scan的点推进一个连续的vector _laserCloud中
   // construct sorted full resolution cloud
   size_t cloudSize = 0;
   for (int i = 0; i < laserCloudScans.size(); i++) {
@@ -152,6 +152,13 @@ void BasicScanRegistration::interpolateIMUStateFor(const float &relTime, IMUStat
   }
 }
 
+// 输入:
+// * _laserCloud
+// 输出:
+// * _cornerPointsSharp
+// * _cornerPointsLessSharp
+// * _surfacePointsFlat
+// * _surfacePointsLessFlat
 void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
 {
   // extract features from individual scans
@@ -177,6 +184,8 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
     setScanBuffersFor(scanStartIdx, scanEndIdx);
 
     // extract features from equally sized scan regions
+    // nFeatureRegion为6，curvatureRegion为5，按照
+    // 将点分为nFeatureRegion份
     for (int j = 0; j < _config.nFeatureRegions; j++) {
       size_t sp = ((scanStartIdx + _config.curvatureRegion) * (_config.nFeatureRegions - j)
                    + (scanEndIdx - _config.curvatureRegion) * j) / _config.nFeatureRegions;
@@ -190,7 +199,7 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
 
       size_t regionSize = ep - sp + 1;
 
-      // reset region buffers, 计算相邻点的曲率
+      // reset region buffers, 计算相邻点的曲率，并从小到大排序
       setRegionBuffersFor(sp, ep);
 
       // extract corner features
@@ -200,8 +209,12 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
         size_t scanIdx = idx - scanStartIdx;
         size_t regionIdx = idx - sp;
 
+        // 是特征点候选点并且其curvature大于特定阈值
+        // 把curvature > suffaceCurvatureThreshold的点作为corner候选点，并将其分类为corner和less corner
+        // points
         if (_scanNeighborPicked[scanIdx] == 0 &&
-            _regionCurvature[regionIdx] > _config.surfaceCurvatureThreshold) {
+            _regionCurvature[regionIdx] > _config.surfaceCurvatureThreshold)
+        {
 
           largestPickedNum++;
           if (largestPickedNum <= _config.maxCornerSharp) {
@@ -220,7 +233,9 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
       int smallestPickedNum = 0;
       for (int k = 0; k < regionSize && smallestPickedNum < _config.maxSurfaceFlat; k++) {
         size_t idx = _regionSortIndices[k];
+        // 该线激光的多少帧点
         size_t scanIdx = idx - scanStartIdx;
+        // 该线激光该region的多少个点
         size_t regionIdx = idx - sp;
 
         if (_scanNeighborPicked[scanIdx] == 0 &&
@@ -234,6 +249,7 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
         }
       }
 
+      // flat, corner, less corner以外的都認為是less flat特征點
       // extract less flat surface features
       for (int k = 0; k < regionSize; k++) {
         if (_regionLabel[k] <= SURFACE_LESS_FLAT) {
@@ -242,6 +258,7 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
       }
     }
 
+    // 这里进行down size的原因?
     // down size less flat surface point cloud of current scan
     pcl::PointCloud<pcl::PointXYZI> surfPointsLessFlatScanDS;
     pcl::VoxelGrid<pcl::PointXYZI> downSizeFilter;
